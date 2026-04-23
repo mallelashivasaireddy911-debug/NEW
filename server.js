@@ -30,17 +30,14 @@ const getSession = (id) => {
       codeVerified: false,
       secretMessage: null,
       secretMessageExpiresAt: null,
-      createdAt: Date.now()
     });
   }
   return sessions.get(id);
 };
 
-// Static routes
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/session/:sessionId', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-// API
 app.post('/api/create-session', (req, res) => {
   const { secretCode } = req.body;
   if (!secretCode) return res.status(400).json({ error: 'Secret code required' });
@@ -52,7 +49,6 @@ app.post('/api/create-session', (req, res) => {
   res.json({
     sessionId,
     holderToken: session.holderToken,
-    shareLink: `https://\( {req.get('host')}/session/ \){sessionId}`
   });
 });
 
@@ -74,7 +70,6 @@ app.get('/api/session/:sessionId', (req, res) => {
     customer: { email: session.customer.email, emailApproved: session.customer.emailApproved },
     codeAttempts: session.codeAttempts,
     maxCodeAttempts: session.maxCodeAttempts,
-    messageExpiredAt: session.secretMessageExpiresAt
   });
 });
 
@@ -87,7 +82,7 @@ app.post('/api/session/:sessionId/customer-email', (req, res) => {
   const session = getSession(sessionId);
   session.customer.email = email;
   io.to(`session-${sessionId}`).emit('customer-submitted-email', { email });
-  res.json({ message: 'Email received. Waiting for holder approval.', status: 'pending_approval' });
+  res.json({ message: 'Email received. Waiting for holder approval.' });
 });
 
 app.post('/api/session/:sessionId/approve-customer', (req, res) => {
@@ -97,7 +92,7 @@ app.post('/api/session/:sessionId/approve-customer', (req, res) => {
   if (token !== session.holderToken) return res.status(401).json({ error: 'Unauthorized' });
 
   session.customer.emailApproved = true;
-  io.to(`session-${sessionId}`).emit('customer-approved', { message: 'Approved! Enter your secret code.' });
+  io.to(`session-${sessionId}`).emit('customer-approved', {});
   res.json({ message: 'Customer approved' });
 });
 
@@ -111,19 +106,15 @@ app.post('/api/session/:sessionId/verify-code', (req, res) => {
   session.codeAttempts++;
   const isCorrect = code.toUpperCase().trim() === session.secretCode;
 
-  io.to(`session-${sessionId}`).emit('code-attempt', {
-    attempt: session.codeAttempts,
-    correct: isCorrect,
-    attemptsLeft: session.maxCodeAttempts - session.codeAttempts
-  });
+  io.to(`session-${sessionId}`).emit('code-attempt', { attempt: session.codeAttempts, correct: isCorrect });
 
   if (isCorrect) {
     session.codeVerified = true;
-    return res.json({ message: 'Code accepted!', nextStep: 'verified' });
+    return res.json({ message: 'Code accepted!' });
   }
 
   if (session.codeAttempts >= session.maxCodeAttempts) {
-    return res.status(403).json({ error: 'Maximum attempts exceeded.', attemptsLeft: 0 });
+    return res.status(403).json({ error: 'Maximum attempts exceeded' });
   }
   res.status(400).json({ error: 'Incorrect code', attemptsLeft: session.maxCodeAttempts - session.codeAttempts });
 });
@@ -135,25 +126,17 @@ app.post('/api/session/:sessionId/send-message', (req, res) => {
   const session = getSession(sessionId);
 
   if (token !== session.holderToken) return res.status(401).json({ error: 'Unauthorized' });
-  if (!session.codeVerified) return res.status(400).json({ error: 'Customer not verified yet' });
+  if (!session.codeVerified) return res.status(400).json({ error: 'Customer not verified' });
 
   session.secretMessage = message;
   session.secretMessageExpiresAt = new Date(Date.now() + 60 * 1000);
-
-  io.to(`session-${sessionId}`).emit('secret-message', {
-    message,
-    expiresIn: 60,
-    sentAt: new Date().toISOString()
-  });
-  res.json({ message: 'Secret message sent!' });
+  io.to(`session-${sessionId}`).emit('secret-message', { message, expiresIn: 60 });
+  res.json({ message: 'Message sent!' });
 });
 
-// Socket.io
 io.on('connection', (socket) => {
-  socket.on('join-session', (sessionId) => {
-    socket.join(`session-${sessionId}`);
-  });
+  socket.on('join-session', (sessionId) => socket.join(`session-${sessionId}`));
 });
 
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
