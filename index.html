@@ -11,7 +11,6 @@
   <div class="max-w-2xl mx-auto" id="app"></div>
 
   <script>
-    const socket = io();
     let sessionId = window.location.pathname.split('/session/')[1];
     let holderToken = new URLSearchParams(window.location.search).get('holder');
 
@@ -20,9 +19,10 @@
 
       if (!sessionId) {
         app.innerHTML = `
-          <div class="text-center">
-            <h1 class="text-4xl font-bold mb-4">Secret Verify</h1>
-            <button onclick="createSession()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-6 rounded-3xl text-xl font-semibold mt-8">
+          <div class="text-center py-12">
+            <h1 class="text-4xl font-bold mb-6">Secret Verify</h1>
+            <button onclick="createSession()" 
+                    class="w-full bg-emerald-600 hover:bg-emerald-700 py-6 rounded-3xl text-xl font-semibold">
               Create New Session (Holder)
             </button>
           </div>
@@ -30,9 +30,9 @@
         return;
       }
 
-      // Check if holder
+      // Holder or Customer?
       fetch(`/api/session/${sessionId}`, {
-        headers: holderToken ? { 'Authorization': `Bearer ${holderToken}` } : {}
+        headers: holderToken ? {'Authorization': `Bearer ${holderToken}`} : {}
       })
       .then(r => r.json())
       .then(data => {
@@ -41,34 +41,29 @@
         if (isHolder) {
           app.innerHTML = `
             <div class="bg-zinc-900 p-8 rounded-3xl">
-              <h2 class="text-2xl font-bold mb-6 text-emerald-400">Holder Dashboard</h2>
-              <p class="text-zinc-400">Session ID: ${sessionId}</p>
-              <p class="mt-8 text-zinc-400">Waiting for customer to submit email...</p>
-              <button onclick="location.reload()" class="mt-8 w-full bg-zinc-700 py-4 rounded-2xl">Refresh Status</button>
+              <h2 class="text-2xl font-bold text-emerald-400 mb-6">Holder Dashboard</h2>
+              <p class="text-zinc-400 mb-4">Session ID: <span class="font-mono">${sessionId}</span></p>
+              <p class="text-zinc-400">Waiting for customer to submit email...</p>
+              <button onclick="location.reload()" class="mt-8 w-full bg-zinc-700 py-4 rounded-2xl">Refresh</button>
             </div>
           `;
         } else {
-          // Customer view
           app.innerHTML = `
             <div class="bg-zinc-900 p-8 rounded-3xl">
               <h2 class="text-xl font-semibold mb-6">Verify Your Identity</h2>
-              <input id="customer-email" type="email" placeholder="your@email.com" 
-                     class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 text-lg mb-6">
-              <button onclick="submitCustomerEmail()" 
-                      class="w-full bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl text-lg font-semibold">
-                Submit Email
-              </button>
+              <input id="email" type="email" placeholder="your@email.com" class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 mb-6">
+              <button onclick="submitEmail()" class="w-full bg-emerald-600 py-4 rounded-2xl font-semibold">Submit Email</button>
             </div>
           `;
         }
       })
-      .catch(() => {
-        app.innerHTML = `<p class="text-red-500">Error loading session. Please refresh.</p>`;
+      .catch(err => {
+        app.innerHTML = `<p class="text-red-500 text-center">Error loading session. <button onclick="location.reload()" class="underline">Retry</button></p>`;
       });
     }
 
     function createSession() {
-      const code = prompt("Enter the secret code you will share with customer (e.g. ABC-1234-XYZ):");
+      const code = prompt("Enter secret code for customer (e.g. TEST123):");
       if (!code) return;
 
       fetch('/api/create-session', {
@@ -79,37 +74,24 @@
       .then(r => r.json())
       .then(data => {
         window.location.href = `/session/\( {data.sessionId}?holder= \){data.holderToken}`;
-      });
+      })
+      .catch(() => alert("Failed to create session"));
     }
 
-    function submitCustomerEmail() {
-      const emailInput = document.getElementById('customer-email');
-      const email = emailInput ? emailInput.value.trim() : '';
-      if (!email) {
-        alert("Please enter your email");
-        return;
-      }
+    function submitEmail() {
+      const email = document.getElementById('email').value.trim();
+      if (!email) return alert("Please enter email");
 
       fetch(`/api/session/${sessionId}/customer-email`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ email })
       })
-      .then(() => {
-        alert("Email submitted successfully! Waiting for holder approval.");
-      })
-      .catch(() => alert("Failed to submit email"));
+      .then(() => alert("Email submitted! Waiting for holder approval."))
+      .catch(() => alert("Failed to submit"));
     }
 
-    // Load once
     render();
-
-    // Gentle polling - every 5 seconds instead of 2
-    setInterval(() => {
-      if (sessionId) render();
-    }, 5000);
-
-    console.log("✅ Secret Verify loaded");
   </script>
 </body>
 </html>
