@@ -14,36 +14,57 @@
     const socket = io();
     let sessionId = window.location.pathname.split('/session/')[1];
     let holderToken = new URLSearchParams(window.location.search).get('holder');
-    let isHolder = false;
 
     function render() {
       const app = document.getElementById('app');
-      let html = `<h1 class="text-3xl font-bold text-center mb-8">Secret Verify</h1>`;
 
       if (!sessionId) {
-        html += `
-          <button onclick="createSession()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-6 rounded-3xl text-xl font-semibold">
-            Create New Session (Holder)
-          </button>
+        app.innerHTML = `
+          <div class="text-center">
+            <h1 class="text-4xl font-bold mb-4">Secret Verify</h1>
+            <button onclick="createSession()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-6 rounded-3xl text-xl font-semibold mt-8">
+              Create New Session (Holder)
+            </button>
+          </div>
         `;
-      } else {
-        html += `<div class="text-center text-sm text-zinc-500 mb-4">Session: ${sessionId}</div>`;
-        
-        // Fetch state to decide view
-        fetch(`/api/session/${sessionId}`, {
-          headers: holderToken ? {'Authorization': `Bearer ${holderToken}`} : {}
-        })
-        .then(r => r.json())
-        .then(data => {
-          isHolder = data.isHolder || !!holderToken;
-          if (isHolder) {
-            renderHolderView();
-          } else {
-            renderCustomerView();
-          }
-        }).catch(() => renderCustomerView());
+        return;
       }
-      app.innerHTML = html;
+
+      // Check if holder
+      fetch(`/api/session/${sessionId}`, {
+        headers: holderToken ? { 'Authorization': `Bearer ${holderToken}` } : {}
+      })
+      .then(r => r.json())
+      .then(data => {
+        const isHolder = data.isHolder || !!holderToken;
+
+        if (isHolder) {
+          app.innerHTML = `
+            <div class="bg-zinc-900 p-8 rounded-3xl">
+              <h2 class="text-2xl font-bold mb-6 text-emerald-400">Holder Dashboard</h2>
+              <p class="text-zinc-400">Session ID: ${sessionId}</p>
+              <p class="mt-8 text-zinc-400">Waiting for customer to submit email...</p>
+              <button onclick="location.reload()" class="mt-8 w-full bg-zinc-700 py-4 rounded-2xl">Refresh Status</button>
+            </div>
+          `;
+        } else {
+          // Customer view
+          app.innerHTML = `
+            <div class="bg-zinc-900 p-8 rounded-3xl">
+              <h2 class="text-xl font-semibold mb-6">Verify Your Identity</h2>
+              <input id="customer-email" type="email" placeholder="your@email.com" 
+                     class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 text-lg mb-6">
+              <button onclick="submitCustomerEmail()" 
+                      class="w-full bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl text-lg font-semibold">
+                Submit Email
+              </button>
+            </div>
+          `;
+        }
+      })
+      .catch(() => {
+        app.innerHTML = `<p class="text-red-500">Error loading session. Please refresh.</p>`;
+      });
     }
 
     function createSession() {
@@ -61,48 +82,34 @@
       });
     }
 
-    function renderHolderView() {
-      document.getElementById('app').innerHTML = `
-        <div class="bg-zinc-900 p-8 rounded-3xl">
-          <h2 class="text-2xl font-bold mb-6 text-emerald-400">Holder Controls</h2>
-          <p class="text-zinc-400 mb-8">Waiting for customer to join and submit email...</p>
-          <button onclick="location.reload()" class="w-full bg-zinc-700 py-4 rounded-2xl">Refresh</button>
-        </div>
-      `;
-    }
-
-    function renderCustomerView() {
-      document.getElementById('app').innerHTML = `
-        <div class="bg-zinc-900 p-8 rounded-3xl">
-          <h2 class="text-xl font-semibold mb-6">Verify Your Identity</h2>
-          <input id="email" type="email" placeholder="your@email.com" 
-                 class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 mb-6 text-lg">
-          <button onclick="submitEmail()" 
-                  class="w-full bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl text-lg font-semibold">
-            Submit Email
-          </button>
-        </div>
-      `;
-    }
-
-    function submitEmail() {
-      const email = document.getElementById('email').value.trim();
-      if (!email) return alert("Enter email");
+    function submitCustomerEmail() {
+      const emailInput = document.getElementById('customer-email');
+      const email = emailInput ? emailInput.value.trim() : '';
+      if (!email) {
+        alert("Please enter your email");
+        return;
+      }
 
       fetch(`/api/session/${sessionId}/customer-email`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ email })
-      }).then(() => alert("Email submitted. Waiting for holder approval."));
+      })
+      .then(() => {
+        alert("Email submitted successfully! Waiting for holder approval.");
+      })
+      .catch(() => alert("Failed to submit email"));
     }
 
-    // Initial load
+    // Load once
     render();
+
+    // Gentle polling - every 5 seconds instead of 2
     setInterval(() => {
       if (sessionId) render();
-    }, 3000);
+    }, 5000);
 
-    console.log("Secret Verify loaded");
+    console.log("✅ Secret Verify loaded");
   </script>
 </body>
 </html>
