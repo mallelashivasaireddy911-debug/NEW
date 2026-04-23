@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Secret Verify</title>
+  <title>Secret Verify - v5</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-white min-h-screen p-6">
@@ -52,7 +52,7 @@
                   `<p class="text-emerald-400 mt-4">✅ Approved</p>` : 
                   `<div class="flex gap-4 mt-6">
                     <button onclick="approveCustomer()" class="flex-1 bg-emerald-600 py-4 rounded-2xl font-semibold">Approve Customer</button>
-                    <button onclick="location.reload()" class="flex-1 bg-zinc-700 py-4 rounded-2xl">Reject</button>
+                    <button onclick="location.reload()" class="flex-1 bg-zinc-700 py-4 rounded-2xl">Refresh</button>
                   </div>`}
               </div>
             `;
@@ -63,7 +63,6 @@
           html += `<button onclick="location.reload()" class="mt-10 w-full bg-zinc-700 py-4 rounded-2xl">Refresh Status</button></div>`;
           app.innerHTML = html;
         } else {
-          // Customer view
           app.innerHTML = `
             <div class="bg-zinc-900 p-8 rounded-3xl">
               <h2 class="text-xl font-semibold mb-6">Verify Your Identity</h2>
@@ -73,7 +72,7 @@
           `;
         }
       })
-      .catch(() => app.innerHTML = `<p class="text-red-500">Failed to load. <button onclick="location.reload()" class="underline">Retry</button></p>`);
+      .catch(() => app.innerHTML = `<p class="text-red-500 text-center">Failed to load.<br><button onclick="location.reload()" class="underline">Retry</button></p>`);
     }
 
     function createSession() {
@@ -89,7 +88,7 @@
       .then(data => {
         window.location.href = `/session/\( {data.sessionId}?holder= \){data.holderToken}`;
       })
-      .catch(err => alert("Failed to create session"));
+      .catch(err => alert("Failed to create session: " + err.message));
     }
 
     function submitEmail() {
