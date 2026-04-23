@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Secret Verify</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body class="bg-zinc-950 text-white min-h-screen p-6">
   <div class="max-w-2xl mx-auto" id="app"></div>
 
   <script>
-    let sessionId = window.location.pathname.split('/session/')[1];
+    const path = window.location.pathname;
+    let sessionId = path.includes('/session/') ? path.split('/session/')[1] : null;
     let holderToken = new URLSearchParams(window.location.search).get('holder');
 
     function render() {
@@ -20,7 +20,7 @@
       if (!sessionId) {
         app.innerHTML = `
           <div class="text-center py-12">
-            <h1 class="text-4xl font-bold mb-6">Secret Verify</h1>
+            <h1 class="text-4xl font-bold mb-8">Secret Verify</h1>
             <button onclick="createSession()" 
                     class="w-full bg-emerald-600 hover:bg-emerald-700 py-6 rounded-3xl text-xl font-semibold">
               Create New Session (Holder)
@@ -30,7 +30,6 @@
         return;
       }
 
-      // Holder or Customer?
       fetch(`/api/session/${sessionId}`, {
         headers: holderToken ? {'Authorization': `Bearer ${holderToken}`} : {}
       })
@@ -42,28 +41,30 @@
           app.innerHTML = `
             <div class="bg-zinc-900 p-8 rounded-3xl">
               <h2 class="text-2xl font-bold text-emerald-400 mb-6">Holder Dashboard</h2>
-              <p class="text-zinc-400 mb-4">Session ID: <span class="font-mono">${sessionId}</span></p>
-              <p class="text-zinc-400">Waiting for customer to submit email...</p>
-              <button onclick="location.reload()" class="mt-8 w-full bg-zinc-700 py-4 rounded-2xl">Refresh</button>
+              <p class="text-zinc-400">Session ID: <span class="font-mono break-all">${sessionId}</span></p>
+              <p class="mt-8 text-zinc-400">Waiting for customer to submit email...</p>
+              <button onclick="location.reload()" class="mt-8 w-full bg-zinc-700 py-4 rounded-2xl">Refresh Status</button>
             </div>
           `;
         } else {
           app.innerHTML = `
             <div class="bg-zinc-900 p-8 rounded-3xl">
               <h2 class="text-xl font-semibold mb-6">Verify Your Identity</h2>
-              <input id="email" type="email" placeholder="your@email.com" class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 mb-6">
-              <button onclick="submitEmail()" class="w-full bg-emerald-600 py-4 rounded-2xl font-semibold">Submit Email</button>
+              <input id="email" type="email" placeholder="your@email.com" 
+                     class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 mb-6 text-lg">
+              <button onclick="submitEmail()" 
+                      class="w-full bg-emerald-600 py-4 rounded-2xl font-semibold">Submit Email</button>
             </div>
           `;
         }
       })
-      .catch(err => {
-        app.innerHTML = `<p class="text-red-500 text-center">Error loading session. <button onclick="location.reload()" class="underline">Retry</button></p>`;
+      .catch(() => {
+        app.innerHTML = `<p class="text-red-500">Failed to load session. <button onclick="location.reload()" class="underline">Retry</button></p>`;
       });
     }
 
     function createSession() {
-      const code = prompt("Enter secret code for customer (e.g. TEST123):");
+      const code = prompt("Enter the secret code you will share with customer (e.g. TEST456):");
       if (!code) return;
 
       fetch('/api/create-session', {
@@ -73,24 +74,26 @@
       })
       .then(r => r.json())
       .then(data => {
+        // Clean redirect
         window.location.href = `/session/\( {data.sessionId}?holder= \){data.holderToken}`;
       })
-      .catch(() => alert("Failed to create session"));
+      .catch(err => alert("Failed to create session: " + err.message));
     }
 
     function submitEmail() {
       const email = document.getElementById('email').value.trim();
-      if (!email) return alert("Please enter email");
+      if (!email) return alert("Please enter your email");
 
       fetch(`/api/session/${sessionId}/customer-email`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ email })
       })
-      .then(() => alert("Email submitted! Waiting for holder approval."))
-      .catch(() => alert("Failed to submit"));
+      .then(() => alert("Email submitted! Now ask holder to approve."))
+      .catch(() => alert("Failed to submit email"));
     }
 
+    // Initial render
     render();
   </script>
 </body>
