@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Secret Verify</title>
+  <title>Secret Verify - v2</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-white min-h-screen p-6">
@@ -28,6 +28,7 @@
         return;
       }
 
+      // Holder or Customer view
       fetch(`/api/session/${sessionId}`, {
         headers: holderToken ? { 'Authorization': `Bearer ${holderToken}` } : {}
       })
@@ -56,7 +57,7 @@
         }
       })
       .catch(() => {
-        app.innerHTML = `<p class="text-red-500 text-center">Failed to load session.<br><button onclick="location.reload()" class="underline mt-4">Retry</button></p>`;
+        app.innerHTML = `<p class="text-red-500">Failed to load. <button onclick="location.reload()" class="underline">Retry</button></p>`;
       });
     }
 
@@ -71,12 +72,10 @@
       })
       .then(r => r.json())
       .then(data => {
-        // This is the critical line — clean redirect with real values
-        window.location.href = `/session/\( {data.sessionId}?holder= \){data.holderToken}`;
+        alert("Backend returned:\nSession ID = " + data.sessionId + "\nHolder Token = " + data.holderToken); // DEBUG ALERT
+        window.location.href = "/session/" + data.sessionId + "?holder=" + data.holderToken;
       })
-      .catch(err => {
-        alert("Failed to create session: " + err.message);
-      });
+      .catch(err => alert("Create session failed: " + err.message));
     }
 
     function submitEmail() {
@@ -88,11 +87,10 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
       })
-      .then(() => alert("Email submitted! Holder can now approve."))
+      .then(() => alert("Email submitted successfully!"))
       .catch(() => alert("Failed to submit email"));
     }
 
-    // Start
     render();
   </script>
 </body>
