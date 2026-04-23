@@ -13,7 +13,7 @@
     let sessionId = window.location.pathname.split('/session/')[1];
     let holderToken = new URLSearchParams(window.location.search).get('holder');
 
-    async function render() {
+    function render() {
       const app = document.getElementById('app');
 
       if (!sessionId) {
@@ -28,19 +28,19 @@
         return;
       }
 
-      // Load session state
-      try {
-        const res = await fetch(`/api/session/${sessionId}`, {
-          headers: holderToken ? {'Authorization': `Bearer ${holderToken}`} : {}
-        });
-        const data = await res.json();
+      fetch(`/api/session/${sessionId}`, {
+        headers: holderToken ? { 'Authorization': `Bearer ${holderToken}` } : {}
+      })
+      .then(r => r.json())
+      .then(data => {
         const isHolder = data.isHolder || !!holderToken;
 
         if (isHolder) {
           app.innerHTML = `
             <div class="bg-zinc-900 p-8 rounded-3xl">
               <h2 class="text-2xl font-bold text-emerald-400 mb-6">Holder Dashboard</h2>
-              <p class="text-zinc-400">Session ID: <span class="font-mono text-lg break-all">${sessionId}</span></p>
+              <p class="text-zinc-400 mb-2">Session ID:</p>
+              <p class="font-mono text-lg bg-zinc-800 p-4 rounded-2xl break-all">${sessionId}</p>
               <p class="mt-8 text-zinc-400">Waiting for customer to submit email...</p>
               <button onclick="location.reload()" class="mt-10 w-full bg-zinc-700 py-4 rounded-2xl">Refresh Status</button>
             </div>
@@ -49,42 +49,42 @@
           app.innerHTML = `
             <div class="bg-zinc-900 p-8 rounded-3xl">
               <h2 class="text-xl font-semibold mb-6">Verify Your Identity</h2>
-              <input id="email" type="email" placeholder="your@email.com" class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 mb-6">
+              <input id="email" type="email" placeholder="your@email.com" class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 mb-6 text-lg">
               <button onclick="submitEmail()" class="w-full bg-emerald-600 py-4 rounded-2xl font-semibold">Submit Email</button>
             </div>
           `;
         }
-      } catch (e) {
-        app.innerHTML = `<p class="text-red-500">Error loading session. <button onclick="location.reload()" class="underline">Retry</button></p>`;
-      }
+      })
+      .catch(() => app.innerHTML = `<p class="text-red-500">Failed to load. <button onclick="location.reload()" class="underline">Retry</button></p>`);
     }
 
     function createSession() {
-      const code = prompt("Enter secret code (e.g. TEST456):");
+      const code = prompt("Enter secret code to share with customer (e.g. TEST456):");
       if (!code) return;
 
       fetch('/api/create-session', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ secretCode: code })
       })
       .then(r => r.json())
       .then(data => {
-        console.log("Created session:", data); // for debugging
         window.location.href = `/session/\( {data.sessionId}?holder= \){data.holderToken}`;
       })
-      .catch(err => alert("Create failed: " + err.message));
+      .catch(err => alert("Failed to create session: " + err.message));
     }
 
     function submitEmail() {
       const email = document.getElementById('email').value.trim();
-      if (!email) return alert("Enter email");
+      if (!email) return alert("Please enter email");
 
       fetch(`/api/session/${sessionId}/customer-email`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
-      }).then(() => alert("Email submitted!")).catch(() => alert("Submit failed"));
+      })
+      .then(() => alert("Email submitted! Holder can now approve."))
+      .catch(() => alert("Failed to submit email"));
     }
 
     render();
