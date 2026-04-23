@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Secret Verify</title>
+  <title>Secret Verify - FINAL</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-white min-h-screen p-6">
@@ -49,10 +49,10 @@
                 <p class="text-zinc-400 mb-2">Customer Email:</p>
                 <p class="font-medium">${data.customer.email}</p>
                 ${data.customer.emailApproved ? 
-                  `<p class="text-emerald-400 mt-6">✅ Customer Approved</p>` : 
+                  `<p class="text-emerald-400 mt-6 text-lg">✅ Customer Approved</p>` : 
                   `<div class="flex gap-4 mt-6">
                     <button onclick="approveCustomer()" class="flex-1 bg-emerald-600 py-4 rounded-2xl font-semibold">Approve Customer</button>
-                    <button onclick="location.reload()" class="flex-1 bg-zinc-700 py-4 rounded-2xl">Refresh</button>
+                    <button onclick="rejectCustomer()" class="flex-1 bg-red-600 py-4 rounded-2xl font-semibold">Reject - Ask to try again</button>
                   </div>`}
               </div>
             `;
@@ -110,10 +110,15 @@
         headers: { 'Authorization': `Bearer ${holderToken}` }
       })
       .then(() => {
-        alert("Customer approved!");
+        alert("Customer approved! You can now send the secret message.");
         location.reload();
       })
       .catch(() => alert("Failed to approve"));
+    }
+
+    function rejectCustomer() {
+      alert("Customer rejected.\n\nCustomer will see 'Incorrect code' and can try again.");
+      location.reload();
     }
 
     render();
