@@ -6,312 +6,54 @@
   <title>Secret Verify</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-  <style>
-    body { font-family: system-ui, -apple-system, sans-serif; }
-    .masked { 
-      font-family: monospace; 
-      letter-spacing: 0.4em; 
-      font-size: 1.75rem; 
-    }
-    .holder-panel { background-color: #f8fafc; }
-  </style>
 </head>
-<body class="bg-zinc-950 text-white min-h-screen">
-  <div class="max-w-2xl mx-auto p-4" id="app"></div>
+<body class="bg-zinc-950 text-white min-h-screen p-6">
+  <div class="max-w-2xl mx-auto" id="app"></div>
 
   <script>
     const socket = io();
-    let sessionId = window.location.pathname.includes('/session/') 
-      ? window.location.pathname.split('/session/')[1] 
-      : null;
+    let sessionId = window.location.pathname.split('/session/')[1];
+    let holderToken = new URLSearchParams(window.location.search).get('holder');
     let isHolder = false;
-    let holderToken = null;
-    let currentStatus = 'loading';
-    let customerEmail = '';
-    let codeAttempts = 0;
-    let maxAttempts = 3;
-    let secretMessage = '';
-    let messageExpiresAt = null;
 
-    // Join session
-    if (sessionId) {
-      socket.emit('join-session', sessionId);
-    }
-
-    // Tailwind script
-    function initTailwind() {
-      // Already loaded via CDN
-    }
-
-    // Render main UI
     function render() {
       const app = document.getElementById('app');
-      let html = '';
+      let html = `<h1 class="text-3xl font-bold text-center mb-8">Secret Verify</h1>`;
 
       if (!sessionId) {
-        html = `
-          <div class="text-center py-20">
-            <h1 class="text-4xl font-bold mb-4">Secret Verify</h1>
-            <p class="text-zinc-400 mb-8">Secure identity verification & secret sharing</p>
-            <button onclick="createNewSession()" 
-                    class="bg-emerald-600 hover:bg-emerald-700 px-8 py-4 rounded-2xl text-lg font-semibold">
-              Create New Session (Holder)
-            </button>
-          </div>
+        html += `
+          <button onclick="createSession()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-6 rounded-3xl text-xl font-semibold">
+            Create New Session (Holder)
+          </button>
         `;
       } else {
-        // Main session view
-        html = `
-          <div class="flex flex-col gap-6">
-            <div class="flex justify-between items-center">
-              <h1 class="text-2xl font-bold">Session ${sessionId.slice(0,8)}...</h1>
-              <div id="status" class="text-sm px-4 py-1 rounded-full bg-zinc-800"></div>
-            </div>
-
-            <!-- Customer View -->
-            <div id="customer-view" class="hidden"></div>
-
-            <!-- Holder View -->
-            <div id="holder-view" class="hidden holder-panel p-6 rounded-3xl border border-zinc-800"></div>
-          </div>
-        `;
+        html += `<div class="text-center text-sm text-zinc-500 mb-4">Session: ${sessionId}</div>`;
+        
+        // Fetch state to decide view
+        fetch(`/api/session/${sessionId}`, {
+          headers: holderToken ? {'Authorization': `Bearer ${holderToken}`} : {}
+        })
+        .then(r => r.json())
+        .then(data => {
+          isHolder = data.isHolder || !!holderToken;
+          if (isHolder) {
+            renderHolderView();
+          } else {
+            renderCustomerView();
+          }
+        }).catch(() => renderCustomerView());
       }
-
       app.innerHTML = html;
-      updateViews();
     }
 
-    function updateViews() {
-      const isHolderView = document.getElementById('holder-view');
-      const isCustomerView = document.getElementById('customer-view');
-      const statusEl = document.getElementById('status');
-
-      // Fetch current state
-      fetch(`/api/session/${sessionId}`, {
-        headers: holderToken ? { 'Authorization': `Bearer ${holderToken}` } : {}
-      })
-      .then(r => r.json())
-      .then(data => {
-        isHolder = data.isHolder;
-        currentStatus = data.status;
-        customerEmail = data.customer.email || '';
-        codeAttempts = data.codeAttempts || 0;
-        maxAttempts = data.maxCodeAttempts || 3;
-
-        if (isHolder) {
-          holderToken = holderToken || new URLSearchParams(window.location.search).get('holder');
-          document.getElementById('holder-view').classList.remove('hidden');
-          renderHolderPanel();
-        } else {
-          document.getElementById('customer-view').classList.remove('hidden');
-          renderCustomerFlow();
-        }
-
-        // Update status pill
-        if (statusEl) {
-          let statusText = currentStatus === 'verified' ? '✅ Verified' : 
-                          currentStatus === 'code_entry' ? '🔑 Code Entry' : 
-                          currentStatus === 'pending_approval' ? '⏳ Waiting Approval' : '⏳ Pending';
-          statusEl.textContent = statusText;
-          statusEl.className = `text-sm px-4 py-1 rounded-full ${currentStatus === 'verified' ? 'bg-emerald-600' : 'bg-zinc-800'}`;
-        }
-      });
-    }
-
-    // ====================== CUSTOMER FLOW ======================
-    function renderCustomerFlow() {
-      const container = document.getElementById('customer-view');
-      let html = '';
-
-      if (currentStatus === 'pending' || !customerEmail) {
-        html = `
-          <div class="bg-zinc-900 p-8 rounded-3xl">
-            <h2 class="text-xl font-semibold mb-6">Verify Your Identity</h2>
-            <input id="customer-email" type="email" placeholder="your@email.com" 
-                   class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 text-lg focus:outline-none focus:border-emerald-500">
-            <button onclick="submitCustomerEmail()" 
-                    class="mt-6 w-full bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl text-lg font-semibold">
-              Submit Email
-            </button>
-          </div>
-        `;
-      } else if (currentStatus === 'pending_approval') {
-        html = `
-          <div class="bg-zinc-900 p-8 rounded-3xl text-center">
-            <div class="animate-pulse text-6xl mb-6">⏳</div>
-            <h2 class="text-2xl font-semibold mb-2">Waiting for Holder Approval</h2>
-            <p class="text-zinc-400">Please wait while the holder verifies your request...</p>
-          </div>
-        `;
-      } else if (currentStatus === 'code_entry') {
-        html = `
-          <div class="bg-zinc-900 p-8 rounded-3xl">
-            <h2 class="text-xl font-semibold mb-4">Enter Secret Code</h2>
-            <p class="text-zinc-400 text-sm mb-6">Attempts left: ${maxAttempts - codeAttempts}</p>
-            <input id="secret-code" type="text" placeholder="ABC-1234-XYZ" maxlength="20"
-                   class="masked w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-6 py-6 text-center text-2xl tracking-widest focus:outline-none focus:border-emerald-500">
-            <button onclick="submitSecretCode()" 
-                    class="mt-8 w-full bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl text-lg font-semibold">
-              Verify Code
-            </button>
-          </div>
-        `;
-      } else if (currentStatus === 'verified') {
-        html = `
-          <div class="bg-emerald-900/30 border border-emerald-600 p-8 rounded-3xl text-center">
-            <div class="text-6xl mb-6">✅</div>
-            <h2 class="text-2xl font-bold mb-4">Verification Complete!</h2>
-            <p class="text-emerald-300">The holder can now send you the secret message.</p>
-            <div id="message-area" class="mt-10 hidden">
-              <div class="bg-zinc-900 p-6 rounded-2xl text-left">
-                <p id="received-message" class="text-lg whitespace-pre-wrap"></p>
-              </div>
-              <button onclick="copyMessage()" 
-                      class="mt-4 w-full bg-white text-black py-3 rounded-2xl font-semibold">Copy Message</button>
-            </div>
-          </div>
-        `;
-      }
-
-      container.innerHTML = html;
-    }
-
-    function submitCustomerEmail() {
-      const email = document.getElementById('customer-email').value.trim();
-      if (!email) return alert("Please enter your email");
-
-      fetch(`/api/session/${sessionId}/customer-email`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ email })
-      }).then(() => updateViews());
-    }
-
-    function submitSecretCode() {
-      const code = document.getElementById('secret-code').value.trim();
-      if (!code) return alert("Please enter the code");
-
-      fetch(`/api/session/${sessionId}/verify-code`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ code })
-      })
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) alert(data.error);
-        else updateViews();
-      });
-    }
-
-    // ====================== HOLDER FLOW ======================
-    function renderHolderPanel() {
-      const container = document.getElementById('holder-view');
-      let html = `<h3 class="font-bold text-lg mb-6 text-emerald-400">HOLDER CONTROLS</h3>`;
-
-      if (currentStatus === 'pending' || !customerEmail) {
-        html += `<p class="text-zinc-400">Waiting for customer to submit email...</p>`;
-      } else if (currentStatus === 'pending_approval') {
-        html += `
-          <div class="bg-zinc-800 p-6 rounded-2xl">
-            <p class="text-sm text-zinc-400 mb-2">Customer Email:</p>
-            <p class="font-mono text-emerald-400">${customerEmail}</p>
-            <div class="flex gap-3 mt-6">
-              <button onclick="approveCustomer()" 
-                      class="flex-1 bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl font-semibold">APPROVE</button>
-              <button onclick="rejectCustomer()" 
-                      class="flex-1 bg-red-600 hover:bg-red-700 py-4 rounded-2xl font-semibold">REJECT</button>
-            </div>
-          </div>
-        `;
-      } else if (currentStatus === 'code_entry') {
-        html += `
-          <div class="bg-zinc-800 p-6 rounded-2xl">
-            <p class="text-sm mb-4">Code Attempts: <span class="font-mono">\( {codeAttempts}/ \){maxAttempts}</span></p>
-            <button onclick="refreshHolder()" class="w-full bg-zinc-700 hover:bg-zinc-600 py-3 rounded-2xl mb-4">Refresh Attempts</button>
-          </div>
-        `;
-      } else if (currentStatus === 'verified') {
-        html += `
-          <div class="space-y-6">
-            <div class="bg-emerald-900/30 p-6 rounded-2xl">
-              <p class="font-semibold mb-3">Send Secret Message (expires in 60s)</p>
-              <textarea id="secret-msg" rows="4" 
-                        class="w-full bg-zinc-900 border border-zinc-700 rounded-2xl p-4 text-white resize-none"
-                        placeholder="Type the confidential information here..."></textarea>
-              <button onclick="sendSecretMessage()" 
-                      class="mt-4 w-full bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl font-bold">SEND MESSAGE</button>
-            </div>
-          </div>
-        `;
-      }
-
-      container.innerHTML = html;
-    }
-
-    function approveCustomer() {
-      fetch(`/api/session/${sessionId}/approve-customer`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${holderToken}` }
-      }).then(() => updateViews());
-    }
-
-    function rejectCustomer() {
-      alert("Customer rejected. Share the link again if needed.");
-    }
-
-    function sendSecretMessage() {
-      const message = document.getElementById('secret-msg').value.trim();
-      if (!message) return alert("Please type a message");
-
-      fetch(`/api/session/${sessionId}/send-message`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${holderToken}`
-        },
-        body: JSON.stringify({ message })
-      }).then(() => {
-        alert("Message sent to customer! It will expire in 60 seconds.");
-        updateViews();
-      });
-    }
-
-    function refreshHolder() {
-      updateViews();
-    }
-
-    function copyMessage() {
-      const msg = document.getElementById('received-message');
-      if (msg) {
-        navigator.clipboard.writeText(msg.textContent);
-        alert("Message copied!");
-      }
-    }
-
-    // Real-time updates
-    socket.on('customer-submitted-email', () => updateViews());
-    socket.on('customer-approved', () => updateViews());
-    socket.on('code-attempt', () => updateViews());
-    socket.on('customer-verified', () => updateViews());
-    socket.on('secret-message', (data) => {
-      secretMessage = data.message;
-      messageExpiresAt = Date.now() + data.expiresIn * 1000;
-      const area = document.getElementById('message-area');
-      if (area) {
-        area.classList.remove('hidden');
-        document.getElementById('received-message').textContent = data.message;
-      }
-    });
-
-    // Create new session
-    function createNewSession() {
-      const secretCode = prompt("Enter the secret code you will share with customer (e.g. ABC-1234-XYZ):");
-      if (!secretCode) return;
+    function createSession() {
+      const code = prompt("Enter the secret code you will share with customer (e.g. ABC-1234-XYZ):");
+      if (!code) return;
 
       fetch('/api/create-session', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ secretCode })
+        body: JSON.stringify({ secretCode: code })
       })
       .then(r => r.json())
       .then(data => {
@@ -319,11 +61,48 @@
       });
     }
 
-    // Initial render + polling
-    render();
-    setInterval(updateViews, 2000);   // Poll every 2 seconds for real-time feel
+    function renderHolderView() {
+      document.getElementById('app').innerHTML = `
+        <div class="bg-zinc-900 p-8 rounded-3xl">
+          <h2 class="text-2xl font-bold mb-6 text-emerald-400">Holder Controls</h2>
+          <p class="text-zinc-400 mb-8">Waiting for customer to join and submit email...</p>
+          <button onclick="location.reload()" class="w-full bg-zinc-700 py-4 rounded-2xl">Refresh</button>
+        </div>
+      `;
+    }
 
-    console.log("%cSecret Verify App Ready", "color:#10b981; font-weight:bold");
+    function renderCustomerView() {
+      document.getElementById('app').innerHTML = `
+        <div class="bg-zinc-900 p-8 rounded-3xl">
+          <h2 class="text-xl font-semibold mb-6">Verify Your Identity</h2>
+          <input id="email" type="email" placeholder="your@email.com" 
+                 class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 mb-6 text-lg">
+          <button onclick="submitEmail()" 
+                  class="w-full bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl text-lg font-semibold">
+            Submit Email
+          </button>
+        </div>
+      `;
+    }
+
+    function submitEmail() {
+      const email = document.getElementById('email').value.trim();
+      if (!email) return alert("Enter email");
+
+      fetch(`/api/session/${sessionId}/customer-email`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ email })
+      }).then(() => alert("Email submitted. Waiting for holder approval."));
+    }
+
+    // Initial load
+    render();
+    setInterval(() => {
+      if (sessionId) render();
+    }, 3000);
+
+    console.log("Secret Verify loaded");
   </script>
 </body>
 </html>
