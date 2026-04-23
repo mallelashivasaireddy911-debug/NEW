@@ -55,11 +55,13 @@
           `;
         }
       })
-      .catch(() => app.innerHTML = `<p class="text-red-500">Failed to load. <button onclick="location.reload()" class="underline">Retry</button></p>`);
+      .catch(() => {
+        app.innerHTML = `<p class="text-red-500 text-center">Failed to load session.<br><button onclick="location.reload()" class="underline mt-4">Retry</button></p>`;
+      });
     }
 
     function createSession() {
-      const code = prompt("Enter secret code to share with customer (e.g. TEST456):");
+      const code = prompt("Enter the secret code you will share with customer (e.g. TEST456):");
       if (!code) return;
 
       fetch('/api/create-session', {
@@ -69,14 +71,17 @@
       })
       .then(r => r.json())
       .then(data => {
+        // This is the critical line — clean redirect with real values
         window.location.href = `/session/\( {data.sessionId}?holder= \){data.holderToken}`;
       })
-      .catch(err => alert("Failed to create session: " + err.message));
+      .catch(err => {
+        alert("Failed to create session: " + err.message);
+      });
     }
 
     function submitEmail() {
       const email = document.getElementById('email').value.trim();
-      if (!email) return alert("Please enter email");
+      if (!email) return alert("Please enter your email");
 
       fetch(`/api/session/${sessionId}/customer-email`, {
         method: 'POST',
@@ -87,6 +92,7 @@
       .catch(() => alert("Failed to submit email"));
     }
 
+    // Start
     render();
   </script>
 </body>
