@@ -7,57 +7,16 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-white min-h-screen p-6">
-  <div class="max-w-2xl mx-auto" id="app"></div>
+  <div class="max-w-2xl mx-auto text-center py-12">
+    <h1 class="text-5xl font-bold text-emerald-400 mb-8">Secret Verify - V11-0423-FINAL</h1>
+    <p class="text-zinc-400 mb-8">If you see this title, the cache is finally broken and new file is live.</p>
+    
+    <button onclick="createSession()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-6 rounded-3xl text-2xl font-semibold">
+      Create New Session (Holder)
+    </button>
+  </div>
 
   <script>
-    let sessionId = window.location.pathname.split('/session/')[1];
-    let holderToken = new URLSearchParams(window.location.search).get('holder');
-
-    function render() {
-      const app = document.getElementById('app');
-
-      if (!sessionId) {
-        app.innerHTML = `
-          <div class="text-center py-12">
-            <h1 class="text-4xl font-bold mb-8">Secret Verify</h1>
-            <button onclick="createSession()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-6 rounded-3xl text-xl font-semibold">
-              Create New Session (Holder)
-            </button>
-          </div>
-        `;
-        return;
-      }
-
-      fetch(`/api/session/${sessionId}`, {
-        headers: holderToken ? { 'Authorization': `Bearer ${holderToken}` } : {}
-      })
-      .then(r => r.json())
-      .then(data => {
-        const isHolder = data.isHolder || !!holderToken;
-
-        if (isHolder) {
-          app.innerHTML = `
-            <div class="bg-zinc-900 p-8 rounded-3xl">
-              <h2 class="text-2xl font-bold text-emerald-400 mb-6">Holder Dashboard</h2>
-              <p class="text-zinc-400 mb-2">Session ID:</p>
-              <p class="font-mono text-lg bg-zinc-800 p-4 rounded-2xl break-all">${sessionId}</p>
-              <p class="mt-8 text-zinc-400">Waiting for customer to submit email...</p>
-              <button onclick="location.reload()" class="mt-10 w-full bg-zinc-700 py-4 rounded-2xl">Refresh Status</button>
-            </div>
-          `;
-        } else {
-          app.innerHTML = `
-            <div class="bg-zinc-900 p-8 rounded-3xl">
-              <h2 class="text-xl font-semibold mb-6">Verify Your Identity</h2>
-              <input id="email" type="email" placeholder="your@email.com" class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 mb-6 text-lg">
-              <button onclick="submitEmail()" class="w-full bg-emerald-600 py-4 rounded-2xl font-semibold">Submit Email</button>
-            </div>
-          `;
-        }
-      })
-      .catch(() => app.innerHTML = `<p class="text-red-500">Failed to load. <button onclick="location.reload()" class="underline">Retry</button></p>`);
-    }
-
     function createSession() {
       const code = prompt("Enter the secret code you will share with customer (e.g. TEST456):");
       if (!code) return;
@@ -73,21 +32,6 @@
       })
       .catch(err => alert("Failed to create session"));
     }
-
-    function submitEmail() {
-      const email = document.getElementById('email').value.trim();
-      if (!email) return alert("Please enter email");
-
-      fetch(`/api/session/${sessionId}/customer-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      })
-      .then(() => alert("Email submitted successfully!"))
-      .catch(() => alert("Failed to submit email"));
-    }
-
-    render();
   </script>
 </body>
 </html>
