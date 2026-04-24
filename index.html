@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Secret Verify</title>
+  <title>Secret Verify - V12-FINAL</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-zinc-950 text-white min-h-screen p-6">
@@ -36,30 +36,15 @@
         const isHolder = data.isHolder || !!holderToken;
 
         if (isHolder) {
-          let html = `
+          app.innerHTML = `
             <div class="bg-zinc-900 p-8 rounded-3xl">
               <h2 class="text-2xl font-bold text-emerald-400 mb-6">Holder Dashboard</h2>
-              <p class="text-zinc-400 mb-2">Session ID: <span class="font-mono">${sessionId}</span></p>
+              <p class="text-zinc-400 mb-2">Session ID:</p>
+              <p class="font-mono text-lg bg-zinc-800 p-4 rounded-2xl break-all">${sessionId}</p>
+              <p class="mt-8 text-zinc-400">Waiting for customer to submit email...</p>
+              <button onclick="location.reload()" class="mt-10 w-full bg-zinc-700 py-4 rounded-2xl">Refresh Status</button>
+            </div>
           `;
-
-          if (data.customer && data.customer.email) {
-            html += `
-              <div class="mt-8 p-6 bg-zinc-800 rounded-2xl">
-                <p class="text-zinc-400 mb-2">Customer Email:</p>
-                <p class="font-medium">${data.customer.email}</p>
-                ${data.customer.emailApproved ? 
-                  `<p class="text-emerald-400 mt-6">✅ Approved</p>` : 
-                  `<div class="flex gap-4 mt-6">
-                    <button onclick="approveCustomer()" class="flex-1 bg-emerald-600 py-4 rounded-2xl font-semibold">Approve Customer</button>
-                    <button onclick="rejectCustomer()" class="flex-1 bg-red-600 py-4 rounded-2xl font-semibold">Reject - Ask to try again</button>
-                  </div>`}
-              </div>`;
-          } else {
-            html += `<p class="mt-8 text-zinc-400">Waiting for customer to submit email...</p>`;
-          }
-
-          html += `<button onclick="location.reload()" class="mt-10 w-full bg-zinc-700 py-4 rounded-2xl">Refresh Status</button></div>`;
-          app.innerHTML = html;
         } else {
           app.innerHTML = `
             <div class="bg-zinc-900 p-8 rounded-3xl">
@@ -100,23 +85,6 @@
       })
       .then(() => alert("Email submitted successfully!"))
       .catch(() => alert("Failed to submit email"));
-    }
-
-    function approveCustomer() {
-      fetch(`/api/session/${sessionId}/approve-customer`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${holderToken}` }
-      })
-      .then(() => {
-        alert("Customer approved!");
-        location.reload();
-      })
-      .catch(() => alert("Failed to approve"));
-    }
-
-    function rejectCustomer() {
-      alert("Customer rejected.");
-      location.reload();
     }
 
     render();
