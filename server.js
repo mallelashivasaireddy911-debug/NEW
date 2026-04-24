@@ -139,4 +139,7 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => console.log(`🚀 Server started - V11-0423-FINAL - Cache broken`));
+server.listen(PORT, () => {
+  console.log(`🚀 Secret Verify Server started - V11-0423-FINAL - CACHE FORCE REBUILD`);
+  console.log(`Live at http://localhost:${PORT}`);
+});
