@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secret Verify - Complete</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .masked-input::placeholder {
+      letter-spacing: 0.1em;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .animate-pulse-custom {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="bg-zinc-950 text-white min-h-screen p-4">
+  <div class="max-w-4xl mx-auto" id="app"></div>
+
+  <script>
+    // Global state
+    let state = {
+      sessionId: window.location.pathname.split('/session/')[1],
+      holderToken: new URLSearchParams(window.location.search).get('holder'),
+      isHolder: false,
+      status: 'pending',
+      customer: { email: null, emailApproved: false },
+      codeAttempts: 0,
+      maxCodeAttempts: 3,
+      secretMessage: null,
+      secretMessageExpiresAt: null,
+      messageExpired: false,
+      socket: null,
+      valueExpiresAt: null,
+      valueExpired: false
+    };
+
+    // Initialize socket.io
+    function initSocket() {
+      state.socket = io();
+      if (state.sessionId) {
+        state.socket.emit('join-session', state.sessionId);
+      }
+
+      state.socket.on('customer-submitted-email', (data) => {
+        state.customer.email = data.email;
+        render();
+      });
+
+      state.socket.on('customer-approved', () => {
+        state.customer.emailApproved = true;
+        state.status = 'code_entry';
+        render();
+      });
+
+      state.socket.on('code-attempt', (data) => {
+        state.codeAttempts = data.attempt;
+        if (!data.correct) {
+          showError(`Incorrect code! Attempts left: ${state.maxCodeAttempts - state.codeAttempts}`);
+        }
+        render();
+      });
+
+      state.socket.on('secret-value-sent', (data) => {
+        state.status = 'value_entry';
+        state.valueExpiresAt = new Date(Date.now() + data.expiresIn * 1000);
+        state.valueExpired = false;
+        startValueTimer();
+        render();
+      });
+
+      state.socket.on('customer-verified', () => {
+        state.status = 'verified';
+        showSuccess('Verification complete!');
+        render();
+      });
+
+      state.socket.on('secret-message', (data) => {
+        state.secretMessage = data.message;
+        state.secretMessageExpiresAt = new Date(Date.now() + data.expiresIn * 1000);
+        state.messageExpired = false;
+        startMessageTimer();
+        render();
+      });
+    }
+
+    // Timer functions
+    function startValueTimer() {
+      const interval = setInterval(() => {
+        if (new Date() > state.valueExpiresAt) {
+          state.valueExpired = true;
+          clearInterval(interval);
+          render();
+        } else {
+          render();
+        }
+      }, 1000);
+    }
+
+    function startMessageTimer() {
+      const interval = setInterval(() => {
+        if (new Date() > state.secretMessageExpiresAt) {
+          state.messageExpired = true;
+          clearInterval(interval);
+          render();
+        } else {
+          render();
+        }
+      }, 1000);
+    }
+
+    function getTimeRemaining(expiresAt) {
+      const now = new Date();
+      const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+      return remaining;
+    }
+
+    // API calls
+    async function createSession() {
+      const code = prompt("Enter the secret code you will share with customer (e.g., TEST123):");
+      if (!code) return;
+
+      try {
+        const res = await fetch('/api/create-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secretCode: code })
+        });
+        const data = await res.json();
+        // ✅ FIXED: Correct template literal syntax
+        window.location.href = `/session/${data.sessionId}?holder=${data.holderToken}`;
+      } catch (err) {
+        showError('Failed to create session');
+      }
+    }
+
+    async function submitEmail() {
+      const email = document.getElementById('email-input')?.value?.trim();
+      if (!email) {
+        showError('Please enter a valid email');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/session/${state.sessionId}/customer-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        if (!res.ok) throw new Error('Failed to submit email');
+        showSuccess('Email submitted! Waiting for holder approval...');
+        document.getElementById('email-input').value = '';
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function approveCustomer() {
+      try {
+        const res = await fetch(`/api/session/${state.sessionId}/approve-customer`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${state.holderToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (!res.ok) throw new Error('Failed to approve');
+        showSuccess('Customer approved!');
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function submitCode() {
+      const code = document.getElementById('code-input')?.value?.trim();
+      if (!code) {
+        showError('Please enter the code');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/session/${state.sessionId}/verify-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+        if (res.ok) {
+          showSuccess('Code verified!');
+          document.getElementById('code-input').value = '';
+        } else {
+          const data = await res.json();
+          showError(data.error || 'Invalid code');
+          document.getElementById('code-input').value = '';
+        }
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function sendSecretValue() {
+      try {
+        const res = await fetch(`/api/session/${state.sessionId}/send-secret-value`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${state.holderToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        const data = await res.json();
+        showSuccess(`Email sent to customer! Secret: ${data.secretValue}`);
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function submitValue() {
+      const value = document.getElementById('value-input')?.value?.trim();
+      if (!value) {
+        showError('Please enter the value from email');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/session/${state.sessionId}/verify-value`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value })
+        });
+        if (res.ok) {
+          showSuccess('Value verified! You are now verified.');
+          document.getElementById('value-input').value = '';
+        } else {
+          const data = await res.json();
+          showError(data.error || 'Invalid value');
+          document.getElementById('value-input').value = '';
+        }
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    async function sendMessage() {
+      const message = document.getElementById('message-input')?.value?.trim();
+      if (!message) {
+        showError('Please enter a message');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/session/${state.sessionId}/send-message`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${state.holderToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ message })
+        });
+        if (!res.ok) throw new Error('Failed to send message');
+        showSuccess('Message sent!');
+        document.getElementById('message-input').value = '';
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    function copyMessage() {
+      if (state.messageExpired) return;
+      navigator.clipboard.writeText(state.secretMessage);
+      showSuccess('Message copied to clipboard!');
+    }
+
+    // Notifications
+    function showError(msg) {
+      const app = document.getElementById('app');
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-red-600 text-white px-6 py-3 rounded-lg';
+      toast.textContent = msg;
+      app.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    function showSuccess(msg) {
+      const app = document.getElementById('app');
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg';
+      toast.textContent = msg;
+      app.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+
+    // Main render function
+    function render() {
+      const app = document.getElementById('app');
+
+      // Home page - no sessionId
+      if (!state.sessionId) {
+        app.innerHTML = `
+          <div class="text-center py-12">
+            <h1 class="text-5xl font-bold mb-4 text-emerald-400">🔐 Secret Verify</h1>
+            <p class="text-zinc-400 mb-10 text-lg">Secure secret sharing between holder and customer</p>
+            <button onclick="createSession()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-6 rounded-3xl text-2xl font-semibold transition">
+              Create New Session (Holder)
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      // Load current session state
+      fetch(`/api/session/${state.sessionId}`, {
+        headers: state.holderToken ? { 'Authorization': `Bearer ${state.holderToken}` } : {}
+      })
+      .then(r => r.json())
+      .then(data => {
+        state.isHolder = data.isHolder || !!state.holderToken;
+        state.status = data.status;
+        state.customer = data.customer;
+        state.codeAttempts = data.codeAttempts;
+        state.maxCodeAttempts = data.maxCodeAttempts;
+        state.secretMessage = data.secretMessage;
+        state.secretMessageExpiresAt = data.secretMessageExpiresAt ? new Date(data.secretMessageExpiresAt) : null;
+
+        // Render based on role
+        if (state.isHolder) {
+          renderHolderView();
+        } else {
+          renderCustomerView();
+        }
+      })
+      .catch(err => {
+        app.innerHTML = `<p class="text-red-500">Failed to load session. <button onclick="location.reload()" class="underline">Retry</button></p>`;
+      });
+    }
+
+    function renderHolderView() {
+      const app = document.getElementById('app');
+      let content = `
+        <div class="bg-zinc-900 p-8 rounded-3xl">
+          <h2 class="text-3xl font-bold text-emerald-400 mb-8">Holder Dashboard</h2>
+          
+          <div class="bg-zinc-800 p-6 rounded-2xl mb-8">
+            <p class="text-zinc-400 mb-2">Session ID:</p>
+            <p class="font-mono text-lg bg-zinc-700 p-4 rounded-xl break-all text-emerald-300">${state.sessionId}</p>
+          </div>
+
+          <div class="bg-zinc-800 p-6 rounded-2xl mb-8">
+            <p class="text-zinc-400 mb-2">Status: <span class="text-emerald-400 font-bold">${state.status.toUpperCase()}</span></p>
+      `;
+
+      // Customer email section
+      if (state.customer.email) {
+        content += `
+          <p class="text-zinc-400 mt-4 mb-2">Customer Email:</p>
+          <p class="font-mono bg-zinc-700 p-3 rounded-lg text-emerald-300">${state.customer.email}</p>
+        `;
+
+        if (!state.customer.emailApproved) {
+          content += `
+            <button onclick="approveCustomer()" class="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 py-3 rounded-xl font-semibold transition">
+              ✓ Approve Customer
+            </button>
+          `;
+        }
+      } else {
+        content += `
+          <p class="text-zinc-500 italic mt-4">Waiting for customer to submit email...</p>
+        `;
+      }
+
+      content += `</div>`;
+
+      // Code verification section
+      if (state.status === 'code_entry' && state.customer.emailApproved) {
+        content += `
+          <div class="bg-zinc-800 p-6 rounded-2xl mb-8">
+            <p class="text-zinc-400 mb-2">Code Attempts: <span class="text-yellow-400">${state.codeAttempts}/${state.maxCodeAttempts}</span></p>
+            <p class="text-zinc-500 text-sm">Waiting for customer to enter code...</p>
+          </div>
+        `;
+      }
+
+      // Send secret value section
+      if (state.status === 'code_entry' && state.customer.emailApproved && state.codeAttempts > 0) {
+        content += `
+          <button onclick="sendSecretValue()" class="w-full bg-blue-600 hover:bg-blue-700 py-4 rounded-2xl font-semibold mb-8 transition">
+            📧 Send Secret Value Email
+          </button>
+        `;
+      }
+
+      // Message sending section
+      if (state.status === 'verified') {
+        content += `
+          <div class="bg-zinc-800 p-6 rounded-2xl mb-8">
+            <label class="text-zinc-400 mb-2 block">Send Secret Message:</label>
+            <textarea id="message-input" placeholder="Type your secret message..." maxlength="5000" class="w-full bg-zinc-700 border border-zinc-600 rounded-2xl px-4 py-3 text-white h-32 mb-3"></textarea>
+            <p class="text-xs text-zinc-500 mb-3">Message will expire after 60 seconds</p>
+            <button onclick="sendMessage()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-3 rounded-xl font-semibold transition">
+              📤 Send Message
+            </button>
+          </div>
+        `;
+      }
+
+      content += `
+        </div>
+      `;
+
+      app.innerHTML = content;
+    }
+
+    function renderCustomerView() {
+      const app = document.getElementById('app');
+      let content = `
+        <div class="bg-zinc-900 p-8 rounded-3xl">
+          <h2 class="text-3xl font-bold text-emerald-400 mb-8">Verify Your Identity</h2>
+      `;
+
+      // Step 1: Email entry
+      if (state.status === 'pending') {
+        content += `
+          <div class="mb-6">
+            <label class="text-zinc-400 mb-2 block">Step 1: Enter Your Email</label>
+            <input id="email-input" type="email" placeholder="your@email.com" class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 text-white text-lg focus:outline-none focus:border-emerald-600">
+            <button onclick="submitEmail()" class="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl font-semibold transition">Submit Email</button>
+          </div>
+        `;
+      }
+
+      // Step 1 waiting
+      if (!state.customer.emailApproved && state.customer.email) {
+        content += `
+          <div class="mb-6 text-center">
+            <p class="text-zinc-400">Email submitted: <span class="text-emerald-300 font-mono">${state.customer.email}</span></p>
+            <p class="text-zinc-500 italic mt-3 animate-pulse-custom">Waiting for holder approval...</p>
+          </div>
+        `;
+      }
+
+      // Step 2: Code entry
+      if (state.status === 'code_entry') {
+        const attemptsLeft = state.maxCodeAttempts - state.codeAttempts;
+        content += `
+          <div class="mb-6">
+            <label class="text-zinc-400 mb-2 block">Step 2: Enter Secret Code</label>
+            <p class="text-sm text-zinc-500 mb-3">Attempts left: <span class="text-yellow-400 font-bold">${attemptsLeft}</span></p>
+            <input id="code-input" type="password" placeholder="••••••••" maxlength="50" class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 text-white text-lg text-center font-mono tracking-widest focus:outline-none focus:border-emerald-600">
+            <button onclick="submitCode()" class="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl font-semibold transition" ${attemptsLeft === 0 ? 'disabled' : ''}>
+              Verify Code
+            </button>
+          </div>
+        `;
+      }
+
+      // Step 3: Value entry
+      if (state.status === 'value_entry') {
+        const timeRemaining = getTimeRemaining(state.valueExpiresAt);
+        const timerColor = timeRemaining < 10 ? 'text-red-500' : 'text-emerald-400';
+        
+        if (!state.valueExpired) {
+          content += `
+            <div class="mb-6">
+              <label class="text-zinc-400 mb-2 block">Step 3: Enter Secret Value</label>
+              <p class="text-sm text-zinc-500 mb-3">Check your email for the code</p>
+              <div class="bg-zinc-800 p-3 rounded-lg mb-4 text-center">
+                <p class="${timerColor} font-bold text-lg">Expires in: ${timeRemaining}s</p>
+              </div>
+              <input id="value-input" type="password" placeholder="••••••••••" maxlength="50" class="w-full bg-zinc-800 border border-zinc-700 rounded-2xl px-5 py-4 text-white text-lg text-center font-mono tracking-widest focus:outline-none focus:border-emerald-600">
+              <button onclick="submitValue()" class="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl font-semibold transition">
+                Verify Value
+              </button>
+            </div>
+          `;
+        } else {
+          content += `
+            <div class="mb-6 text-center bg-red-900 p-6 rounded-2xl">
+              <p class="text-red-300 text-lg">⏱️ Secret value expired!</p>
+              <p class="text-red-400 text-sm mt-2">Ask the holder to send a new one</p>
+            </div>
+          `;
+        }
+      }
+
+      // Step 4: Message display
+      if (state.status === 'verified') {
+        const timeRemaining = state.secretMessageExpiresAt ? getTimeRemaining(state.secretMessageExpiresAt) : 0;
+        const timerColor = timeRemaining < 10 ? 'text-red-500' : 'text-emerald-400';
+
+        if (state.secretMessage && !state.messageExpired) {
+          content += `
+            <div class="mb-6">
+              <label class="text-zinc-400 mb-2 block">Your Secret Message:</label>
+              <div class="bg-emerald-900 border border-emerald-700 p-6 rounded-2xl mb-4">
+                <p class="text-white text-lg leading-relaxed break-words">${state.secretMessage}</p>
+              </div>
+              <div class="bg-zinc-800 p-3 rounded-lg mb-4 text-center">
+                <p class="${timerColor} font-bold text-lg">Expires in: ${timeRemaining}s</p>
+              </div>
+              <button onclick="copyMessage()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-4 rounded-2xl font-semibold transition">
+                📋 Copy Message
+              </button>
+            </div>
+          `;
+        } else if (state.messageExpired) {
+          content += `
+            <div class="mb-6 text-center bg-red-900 p-6 rounded-2xl">
+              <p class="text-red-300 text-lg">⏱️ Message has expired</p>
+              <p class="text-red-400 text-sm mt-2">You can no longer view this message</p>
+            </div>
+          `;
+        } else {
+          content += `
+            <div class="mb-6 text-center">
+              <p class="text-zinc-500 italic animate-pulse-custom">Waiting for holder to send secret message...</p>
+            </div>
+          `;
+        }
+      }
+
+      content += `
+        </div>
+      `;
+
+      app.innerHTML = content;
+    }
+
+    // Initialize
+    initSocket();
+    render();
+    setInterval(render, 2000); // Auto-refresh every 2 seconds for real-time feel
+  </script>
+</body>
+</html>
