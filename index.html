@@ -69,7 +69,8 @@
       })
       .then(r => r.json())
       .then(data => {
-        window.location.href = `/session/\( {data.sessionId}?holder= \){data.holderToken}`;
+        //window.location.href = `/session/\( {data.sessionId}?holder= \){data.holderToken}`;
+        window.location.href = `/session/${data.sessionId}?holder=${data.holderToken}`;
       })
       .catch(err => alert("Failed to create session"));
     }
