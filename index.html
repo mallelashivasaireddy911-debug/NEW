@@ -252,7 +252,7 @@
   <div class="page">
     <div id="home-card" class="card">
       <div class="center mb-6">
-        <div style="font-size: 3rem; margin-bottom: 10px;">☀️</div>
+        <div style="font-size: 3rem; margin-bottom: 10px;">🔐🗝️</div>
         <h1 class="title mb-2">Secret Verify</h1>
         <p class="subtitle">Secure secret sharing between holder and customer</p>
       </div>
@@ -542,36 +542,35 @@
 
         if (S.status === "pending") {
           body = `
-            <div class="logo">☀️</div>
-            <label class="label">In collaboration with Google</label>
-          
-            <input id="inp-email" type="email" class="input mb-4" placeholder="Email" />
-            <button id="btn-email" class="btn btn-blue" type="button">Next</button>
+            <label class="label">Step 1 — Enter Your Email</label>
+            <p class="hint mb-4">So the holder can confirm who you are.</p>
+            <input id="inp-email" type="email" class="input mb-4" placeholder="your@email.com" />
+            <button id="btn-email" class="btn btn-blue" type="button">Submit Email</button>
           `;
         } else if (S.status === "pending_approval") {
           body = `
-            <p class="small muted mb-1">Loading:</p>
+            <p class="small muted mb-1">Email submitted:</p>
             <p class="code blue bold mb-6">${escapeHtml(S.customerEmail)}</p>
-            ${spinnerOnly("Verifying google to validate your Email…")}
+            ${spinnerOnly("Waiting for holder to approve your email…")}
           `;
         } else if (S.status === "code_entry") {
           body = `
-            <label class="label">Enter Password</label>
+            <label class="label">Step 2 — Enter Secret Code</label>
             ${S.codeRejected
-              ? '<p class="small red bold mb-3"> Wrong Password — please try again.</p>'
-              
-            <input id="inp-code" type="text" class="input input--center mb-4" placeholder="Password" maxlength="100" autocomplete="off" />
-            <button id="btn-code" class="btn btn-blue" type="button">Next</button>
+              ? '<p class="small red bold mb-3">❌ Wrong code — please try again.</p>'
+              : '<p class="hint mb-4">Enter the code you received from the holder.</p>'}
+            <input id="inp-code" type="text" class="input input--center mb-4" placeholder="Enter code" maxlength="100" autocomplete="off" />
+            <button id="btn-code" class="btn btn-blue" type="button">Submit Code</button>
           `;
         } else if (S.status === "pending_code_approval") {
           body = `
-            ${spinnerOnly("Google is verifying")}
+            ${spinnerOnly("Holder is verifying your code…")}
           `;
         } else if (S.status === "verified") {
           if (S.secretMessage && !S.msgExpired) {
             const secs = Math.max(0, Math.floor((S.secretExpiresAt - Date.now()) / 1000));
             body = `
-              <p class="bold mb-3">Try your luck in Amazon:</p>
+              <p class="bold mb-3">🔐 Secret Message:</p>
               <div class="panel panel-green mb-4">
                 <p style="font-size: 1.05rem; line-height: 1.7; white-space: pre-wrap; word-break: break-word;">${escapeHtml(S.secretMessage)}</p>
               </div>
@@ -579,20 +578,20 @@
                 <p id="msg-timer" class="bold ${secs < 10 ? "red" : "blue"}" style="font-size: 2rem;">⏱ ${secs}s</p>
                 <p class="xs muted" style="margin-top: 4px;">Message self-destructs</p>
               </div>
-              <button id="btn-copy-message" class="btn btn-green" type="button">📋 Copy Code</button>
+              <button id="btn-copy-message" class="btn btn-green" type="button">📋 Copy Message</button>
             `;
           } else if (S.msgExpired) {
             body = `
               <div class="panel center" style="border-color:#fde68a; background:#fffbeb;">
-                <p class="bold yellow mb-2">⏰ Code expired</p>
-                <p class="small muted">The Code is no longer available.</p>
+                <p class="bold yellow mb-2">⏰ Message expired</p>
+                <p class="small muted">The secret message is no longer available.</p>
               </div>
             `;
           } else {
             body = `
               <div class="panel center">
-                <div class="spinner-wrap"><div class="spinner"></div></div>
-                <p class="small muted pulse" style="margin-top: 12px;">Generation may take a while…</p>
+               <div class="spinner-wrap"><div class="spinner"></div></div>
+                <p class="small muted pulse" style="margin-top: 12px;">Waiting for holder to send the secret message…</p>
               </div>
             `;
           }
@@ -600,7 +599,7 @@
 
         sessionCard.innerHTML = `
           <div class="session-header">
-           <h2 style="font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em;">☀️ Sun Productions</h2>
+            <h2 style="font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em;">🔐 Customer View</h2>
             <p class="session-id">${escapeHtml(SESSION_ID)}</p>
           </div>
 
