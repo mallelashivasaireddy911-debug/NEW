@@ -38,10 +38,12 @@ const getSession = (id) => {
       id,
       holderToken: generateToken(),
       secretCode: null,
-      customer: { email: null, emailApproved: false },
+      customer: { email: null, emailApproved: false, emailRejected: false },
       customerCode: null,    // Code submitted by customer (shown to holder)
       codeApproved: false,   // Holder manually approved
       codeRejected: false,   // Holder rejected (customer can retry)
+      emailRejected: false,  // Holder rejected the submitted email (customer re-enters)
+      emailApprovalTimer: null, // setTimeout ref — auto-rejects after 30s if holder doesn't act
       secretMessage: null,
       secretMessageExpiresAt: null,
     });
@@ -143,9 +145,30 @@ app.post('/api/session/:sessionId/customer-email', (req, res) => {
     }
 
     const session = getSession(sessionId);
-    session.customer.email = email;
 
-    console.log(`[+] Customer email submitted: ${email}`);
+    // Clear any existing timer from a previous email submission attempt
+    if (session.emailApprovalTimer) {
+      clearTimeout(session.emailApprovalTimer);
+      session.emailApprovalTimer = null;
+    }
+
+    session.customer.email = email;
+    session.customer.emailRejected = false;
+
+    // Auto-reject after 30 seconds if holder takes no action
+    session.emailApprovalTimer = setTimeout(() => {
+      // Only fire if still waiting (not already approved or rejected)
+      if (session.customer.email && !session.customer.emailApproved) {
+        session.customer.email = null;
+        session.customer.emailApproved = false;
+        session.customer.emailRejected = true;
+        session.emailApprovalTimer = null;
+        console.log(`[⏱] Email auto-rejected after 30s timeout`);
+        io.to(`session-${sessionId}`).emit('customer-email-rejected', { reason: 'timeout' });
+      }
+    }, 30000);
+
+    console.log(`[+] Customer email submitted: ${email} — 30s approval window started`);
     io.to(`session-${sessionId}`).emit('customer-submitted-email', { email });
 
     res.json({ message: 'Email received. Waiting for holder approval.' });
@@ -166,6 +189,12 @@ app.post('/api/session/:sessionId/approve-customer', (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    // Cancel the 30s auto-reject timer since holder is acting manually
+    if (session.emailApprovalTimer) {
+      clearTimeout(session.emailApprovalTimer);
+      session.emailApprovalTimer = null;
+    }
+
     session.customer.emailApproved = true;
 
     console.log(`[+] Email approved for: ${session.customer.email}`);
@@ -174,6 +203,38 @@ app.post('/api/session/:sessionId/approve-customer', (req, res) => {
     res.json({ message: 'Customer approved. Customer will now be prompted for code.' });
   } catch (err) {
     console.error('Error approving customer:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Holder rejects customer email (email already registered — customer re-enters)
+app.post('/api/session/:sessionId/reject-customer', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const token = req.headers.authorization?.split(' ')[1];
+    const session = getSession(sessionId);
+
+    if (token !== session.holderToken) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Cancel the 30s auto-reject timer since holder is acting manually
+    if (session.emailApprovalTimer) {
+      clearTimeout(session.emailApprovalTimer);
+      session.emailApprovalTimer = null;
+    }
+
+    // Clear the submitted email so customer can try a different one
+    session.customer.email = null;
+    session.customer.emailApproved = false;
+    session.customer.emailRejected = true;
+
+    console.log(`[-] Email rejected by holder — customer must re-enter email`);
+    io.to(`session-${sessionId}`).emit('customer-email-rejected', { reason: 'manual' });
+
+    res.json({ message: 'Email rejected. Customer can submit a different email.' });
+  } catch (err) {
+    console.error('Error rejecting customer email:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -348,13 +409,13 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
-║           🔐 SECRET VERIFY - V16 (With Restart)           ║
+║         ☀️  SUN SOUVENIR - V17 (Email Reject Added)        ║
 ║                                                            ║
-║  Flow: Email → Holder Approves Email → Customer Enters    ║
-║        Code → Holder Approves/Rejects → Secret Message    ║
+║  Flow: Email → Approve/Reject Email → Customer Enters     ║
+║        Password → Approve/Reject → Souvenir Message       ║
 ║        → Message Expires → RESTART CAPABILITY ✨           ║
 ║                                                            ║
-║  No email sending. All decisions made manually by holder. ║
+║  No email sending. All decisions made manually.           ║
 ║  Server running on port: ${PORT}                              ║
 ║  Status: Ready ✅                                          ║
 ╚════════════════════════════════════════════════════════════╝
